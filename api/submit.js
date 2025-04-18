@@ -1,31 +1,47 @@
 // api/submit.js
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
+    return res.status(405).json({ error: 'Method Not Allowed' });
   }
 
-  const payload = req.body;
+  const airtableToken = process.env.AIRTABLE_TOKEN;
+  const airtableBase = process.env.AIRTABLE_BASE_ID; // e.g. 'appoFp9XDO22Wyi9g'
+  const airtableTable = process.env.AIRTABLE_TABLE_NAME; // e.g. 'PIP'
+
+  if (!airtableToken || !airtableBase || !airtableTable) {
+    return res.status(500).json({ error: 'Missing Airtable configuration' });
+  }
+
+  const { fields } = req.body;
+
+  if (!fields || typeof fields !== 'object') {
+    return res.status(400).json({ error: 'Invalid request body' });
+  }
+
+  const airtableEndpoint = `https://api.airtable.com/v0/${airtableBase}/${airtableTable}`;
 
   try {
-    const airtableRes = await fetch('https://api.airtable.com/v0/appoFp9XDO22Wyi9g/PIP', {
+    const airtableRes = await fetch(airtableEndpoint, {
       method: 'POST',
       headers: {
-        Authorization: 'Bearer patKJcYQeZebXXB9p.4088f1221a2c9fc1d710d65b2ba113937b918464cae0d470f10d2101e3582dca',
+        'Authorization': `Bearer ${airtableToken}`,
         'Content-Type': 'application/json',
+        'Prefer': 'return=representation'
       },
-      body: JSON.stringify(payload),
+      body: JSON.stringify({ records: [{ fields }], typecast: true })
     });
 
-    const data = await airtableRes.json();
-
     if (!airtableRes.ok) {
-      console.error('Airtable Error:', data);
-      return res.status(airtableRes.status).json(data);
+      const errData = await airtableRes.json();
+      return res.status(airtableRes.status).json({ error: errData });
     }
 
-    res.status(200).json({ success: true });
+    const data = await airtableRes.json();
+    return res.status(200).json({ success: true, data });
+
   } catch (error) {
-    console.error('Proxy Error:', error);
-    res.status(500).json({ error: 'Server error' });
+    console.error('Submission failed:', error);
+    return res.status(500).json({ error: 'Server error' });
   }
 }
